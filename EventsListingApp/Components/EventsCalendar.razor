@@ -1,0 +1,217 @@
+@using EventsListingApp.Model
+
+<div class="calendar-root" style="max-width:720px;margin:0 auto;">
+    <div class="calendar-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:0.95rem;margin-bottom:6px;">               
+        <div style="display:flex;gap:6px;align-items:center;">
+            <select class="form-select form-select-sm" style="width:140px;padding:2px 6px;" @bind="SelectedMonth">
+                @for (int m = 1; m <= 12; m++)
+                {
+                    <option value="@m">@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedMonthName(m)</option>
+                }
+            </select>
+
+            <select class="form-select form-select-sm" style="width:100px;padding:2px 6px;" @bind="SelectedYear">
+                @for (int y = yearRangeStart; y <= yearRangeEnd; y++)
+                {
+                    <option value="@y">@y</option>
+                }
+            </select>
+        </div>
+    </div>
+   
+    <table class="table table-bordered mt-2" style="font-size:0.9rem;">
+        <thead>
+            <tr>
+                @foreach (var d in dayNames)
+                {
+                    <th class="text-center" style="padding:6px;">@d</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var week in weeks)
+            {
+                <tr>
+                    @foreach (var day in week)
+                    {
+                        if (day == null)
+                        {
+                            <td style="padding:6px;min-width:60px;height:56px;"></td>
+                        }
+                        else
+                        {
+                            var dayDate = day.Value;
+                            <td class="text-center" style="vertical-align:top;min-width:60px;height:56px;padding:6px;">
+                                <div style="font-weight:600;">@dayDate.Day</div>
+                                @if (eventsCountLookup.TryGetValue(dayDate.Date, out var count) && count > 0)
+                                {
+                                    <div style="font-size:0.75rem;color:#fff;background:#007bff;border-radius:12px;padding:2px 6px;display:inline-block;margin-top:6px;">@count</div>
+                                    <div>
+                                        <button type="button" class="btn btn-link btn-sm p-0" @onclick="() => OnDayClicked(dayDate.Date)">View</button>
+                                    </div>
+                                }
+                            </td>
+                        }
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (showEventCard)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:1050;">
+        <div style="background:white;border-radius:8px;padding:16px;max-width:520px;width:90%;box-shadow:0 6px 24px rgba(0,0,0,0.2); overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <h5 style="margin:0;">Events on @selectedDate?.ToString("D")</h5>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="CloseEventCard">Close</button>
+            </div>                      
+                @foreach (var ev in selectedDateEvents)
+                {
+                    <div class="card mb-2" style="padding:10px;">
+                        <div style="font-weight:700;">@ev.Name</div>                        
+                        <div style="font-size:0.85rem;margin-top:6px;color:#555;">Date: @ev.StartDate.ToString("f")</div>
+                        <div style="font-size:0.85rem;color:#555;">Venue: @GetVenueDisplay(ev.VenueId)</div>
+                    </div>
+                }            
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public IEnumerable<EventList> Events { get; set; } = Enumerable.Empty<EventList>();
+
+    [Parameter]
+    public IEnumerable<Venue> Venues { get; set; } = Enumerable.Empty<Venue>();
+
+    [Parameter]
+    public int VenueId { get; set; }
+
+    [Parameter]
+    public EventCallback<DateTime> DaySelected { get; set; }
+
+    private DateTime currentMonth = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+    private readonly List<string> dayNames = new() { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+
+    private Dictionary<DateTime, int> eventsCountLookup = new();
+    private List<List<DateTime?>> weeks = new();
+
+    // year range values displayed in select
+    private int yearRangeStart;
+    private int yearRangeEnd;
+
+    // bound select fields
+    private int selectedMonth;
+    private int selectedYear;
+
+    // event card state
+    private bool showEventCard;
+    private DateTime? selectedDate;
+    private List<EventList>? selectedDateEvents;
+
+    private int SelectedMonth
+    {
+        get { return selectedMonth; }
+        set
+        {
+            if (selectedMonth == value) return;
+            selectedMonth = value;
+            SetCurrentMonth(new DateTime(selectedYear, selectedMonth, 1));
+        }
+    }
+
+    private int SelectedYear
+    {
+        get { return selectedYear; }
+        set
+        {
+            if (selectedYear == value) return;
+            selectedYear = value;
+            SetCurrentMonth(new DateTime(selectedYear, selectedMonth, 1));
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        yearRangeStart = DateTime.Now.Year - 20;
+        yearRangeEnd = DateTime.Now.Year+5;
+        selectedMonth = currentMonth.Month;
+        selectedYear = currentMonth.Year;        
+        BuildCalendar();
+    }
+
+    protected override void OnParametersSet()
+    {
+        BuildCalendar();
+    }
+
+    private void SetCurrentMonth(DateTime newMonth)
+    {
+        currentMonth = new DateTime(newMonth.Year, newMonth.Month, 1);
+        selectedMonth = currentMonth.Month;
+        selectedYear = currentMonth.Year;
+        BuildCalendar();
+        StateHasChanged();
+    }
+   
+    private void BuildCalendar()
+    {
+        var filtered = Events.Where(e => VenueId == 0 || e.VenueId == VenueId).ToList();
+
+        eventsCountLookup = filtered
+            .GroupBy(e => e.StartDate.Date)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        weeks = new List<List<DateTime?>>();
+
+        var firstOfMonth = new DateTime(currentMonth.Year, currentMonth.Month, 1);
+        var daysInMonth = DateTime.DaysInMonth(firstOfMonth.Year, firstOfMonth.Month);
+
+        var currentWeek = new List<DateTime?>();
+        for (int i = 0; i < (int)firstOfMonth.DayOfWeek; i++) currentWeek.Add(null);
+
+        for (int d = 1; d <= daysInMonth; d++)
+        {
+            currentWeek.Add(new DateTime(firstOfMonth.Year, firstOfMonth.Month, d));
+            if (currentWeek.Count == 7)
+            {
+                weeks.Add(currentWeek);
+                currentWeek = new List<DateTime?>();
+            }
+        }
+
+        if (currentWeek.Count > 0)
+        {
+            while (currentWeek.Count < 7) currentWeek.Add(null);
+            weeks.Add(currentWeek);
+        }
+    }
+  
+    private void OnDayClicked(DateTime date)
+    {
+        selectedDate = date.Date;
+        selectedDateEvents = Events
+            .Where(e => e.StartDate.Date == date.Date && (VenueId == 0 || e.VenueId == VenueId))
+            .OrderBy(e => e.StartDate)
+            .ToList();
+
+        showEventCard = true;
+    }
+
+    private void CloseEventCard()
+    {
+        showEventCard = false;
+        selectedDate = null;
+        selectedDateEvents = null;
+    }
+
+    private string GetVenueDisplay(int venueId)
+    {
+        if (Venues == null) return $"Venue #{venueId}";
+        var v = Venues.FirstOrDefault(x => x.Id == venueId);
+        if (v == null) return $"Venue #{venueId}";
+        return string.IsNullOrWhiteSpace(v.Location) ? v.Name : $"{v.Name} — {v.Location}";
+    }
+}

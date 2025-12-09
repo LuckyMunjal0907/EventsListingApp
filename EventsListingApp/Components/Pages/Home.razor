@@ -1,0 +1,113 @@
+﻿@page "/"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using EventsListingApp.Model
+@using Microsoft.Extensions.Options
+@using System.Net.Http.Json
+
+
+<PageTitle>Events</PageTitle>
+
+<div>
+    <VenueSelect Venues="eventsWithVenues.Venues"                 
+                 SelectedVenueIdChanged="OnVenueChanged" />
+</div>
+
+<div class="mt-4">
+    <EventsCalendar Events="eventsWithVenues.Events" Venues = "eventsWithVenues.Venues" VenueId="selectedVenueId" DaySelected="OnDaySelected" />
+</div>
+
+<div class="mt-4">
+    @if (selectedDayEvents == null)
+    {
+        <p>Select a day to view events.</p>
+    }
+    else if (!selectedDayEvents.Any())
+    {
+        <p>No events on this day.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var ev in selectedDayEvents)
+            {
+                <li>@ev.Name (@ev.StartDate.ToString("g"))</li>
+            }
+        </ul>
+    }
+</div>
+
+
+@code {
+    [Inject]
+    private IHttpClientFactory HttpClientFactory { get; set; } = default!;
+    [Inject]
+    private IOptions<ConfigurationSettings> options { get; set; } = default!;
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
+    private EventsWithVenues eventsWithVenues = new EventsWithVenues();
+    private int selectedVenueId = 0;
+    private List<EventList>? selectedDayEvents;
+    private bool isDataFromAPI = false;
+    private bool hasLoaded = false;
+    protected override async Task OnInitializedAsync()
+    {       
+        try
+        {
+            using (var client = HttpClientFactory.CreateClient())
+            {
+                client.BaseAddress = new Uri(options.Value.EventSourceUrl ?? string.Empty);
+                var eventsWithVenuesResponse = await client.GetFromJsonAsync<EventsWithVenues>("");
+                if (eventsWithVenuesResponse != null)
+                {
+                    eventsWithVenues = eventsWithVenuesResponse;
+                }
+            }
+            isDataFromAPI = true;
+            return;
+        }
+        catch (Exception ex)
+        {
+            // log error
+            Console.WriteLine($"Error fetching events data: {ex.Message}");
+        }
+
+        try
+        {
+            var fallbackClient = HttpClientFactory.CreateClient();
+            fallbackClient.BaseAddress = new Uri(Navigation.BaseUri);
+            var eventsWithVenuesResponse = await fallbackClient.GetFromJsonAsync<EventsWithVenues>("/events-localData.json");
+            if (eventsWithVenuesResponse != null)
+            {
+                eventsWithVenues = eventsWithVenuesResponse;
+                isDataFromAPI = false; // loaded from local json file.
+                return;
+            }
+
+        }
+        catch (Exception ex)
+        {
+            // log error
+            Console.WriteLine($"Error fetching fallback events data: {ex.Message}");
+        }
+    }
+
+    private Task OnVenueChanged(int venueId)
+    {
+        selectedVenueId = venueId;
+        // clear day selection when venue changes
+        selectedDayEvents = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnDaySelected(DateTime date)
+    {
+        selectedDayEvents = eventsWithVenues.Events
+            .Where(e => e.StartDate.Date == date.Date && (selectedVenueId == 0 || e.VenueId == selectedVenueId))
+            .ToList();
+
+        //StateHasChanged();
+        return Task.CompletedTask;
+    }
+}

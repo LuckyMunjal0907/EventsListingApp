@@ -1,0 +1,29 @@
+@rendermode InteractiveServer
+@using EventsListingApp.Model
+<div style="display:flex;justify-content:center;align-items:center;min-height:120px;">  
+    <label>Venue:</label>
+    
+    <select id="venueSelect" class="form-select" style="max-width:420px;" @onchange="@OnVenueChanged">
+            <option value="0">All</option>
+            @foreach (var v in Venues)
+            {
+                <option value="@v.Id">@v.Name</option>
+            }
+        </select>        
+    </div>
+
+@code {
+    [Parameter]
+    public IEnumerable<Venue> Venues { get; set; } = Enumerable.Empty<Venue>();
+    
+    [Parameter]
+    public EventCallback<int> SelectedVenueIdChanged { get; set; }   
+
+    public async Task OnVenueChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value.ToString(), out var venueId))
+        {            
+            await SelectedVenueIdChanged.InvokeAsync(venueId);
+        }
+    }
+}
