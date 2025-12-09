@@ -1,6 +1,6 @@
 namespace EventsListingApp.Model
 {
-    public class EventList
+    public class Event
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
