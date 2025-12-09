@@ -81,7 +81,7 @@
 
 @code {
     [Parameter]
-    public IEnumerable<EventList> Events { get; set; } = Enumerable.Empty<EventList>();
+    public IEnumerable<Event> Events { get; set; } = Enumerable.Empty<Event>();
 
     [Parameter]
     public IEnumerable<Venue> Venues { get; set; } = Enumerable.Empty<Venue>();
@@ -109,7 +109,7 @@
     // event card state
     private bool showEventCard;
     private DateTime? selectedDate;
-    private List<EventList>? selectedDateEvents;
+    private List<Event>? selectedDateEvents;
 
     private int SelectedMonth
     {

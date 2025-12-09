@@ -42,12 +42,10 @@
     private IHttpClientFactory HttpClientFactory { get; set; } = default!;
     [Inject]
     private IOptions<ConfigurationSettings> options { get; set; } = default!;
-    [Inject]
-    private NavigationManager Navigation { get; set; } = default!;
 
     private EventsWithVenues eventsWithVenues = new EventsWithVenues();
     private int selectedVenueId = 0;
-    private List<EventList>? selectedDayEvents;
+    private List<Event>? selectedDayEvents;
     private bool isDataFromAPI = false;
     private bool hasLoaded = false;
     protected override async Task OnInitializedAsync()
@@ -55,40 +53,18 @@
         try
         {
             using (var client = HttpClientFactory.CreateClient())
-            {
-                client.BaseAddress = new Uri(options.Value.EventSourceUrl ?? string.Empty);
-                var eventsWithVenuesResponse = await client.GetFromJsonAsync<EventsWithVenues>("");
-                if (eventsWithVenuesResponse != null)
+            {                
+                var httpResponse = await client.GetAsync(new Uri(options.Value.EventSourceApi ?? string.Empty));
+                if (httpResponse.StatusCode == System.Net.HttpStatusCode.OK)
                 {
-                    eventsWithVenues = eventsWithVenuesResponse;
+                    eventsWithVenues = await httpResponse.Content.ReadFromJsonAsync<EventsWithVenues>();
                 }
             }
-            isDataFromAPI = true;
-            return;
         }
         catch (Exception ex)
         {
             // log error
             Console.WriteLine($"Error fetching events data: {ex.Message}");
-        }
-
-        try
-        {
-            var fallbackClient = HttpClientFactory.CreateClient();
-            fallbackClient.BaseAddress = new Uri(Navigation.BaseUri);
-            var eventsWithVenuesResponse = await fallbackClient.GetFromJsonAsync<EventsWithVenues>("/events-localData.json");
-            if (eventsWithVenuesResponse != null)
-            {
-                eventsWithVenues = eventsWithVenuesResponse;
-                isDataFromAPI = false; // loaded from local json file.
-                return;
-            }
-
-        }
-        catch (Exception ex)
-        {
-            // log error
-            Console.WriteLine($"Error fetching fallback events data: {ex.Message}");
         }
     }
 
